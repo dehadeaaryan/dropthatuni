@@ -1,0 +1,34 @@
+{
+  "name": "dropthatuni",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "bun@1.3.11",
+  "scripts": {
+    "dev": "bun --bun vite dev",
+    "build": "bun --bun vite build",
+    "preview": "bun --bun vite preview",
+    "check": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json",
+    "test:ui": "playwright test",
+    "start": "bun build/index.js"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.11",
+    "@playwright/test": "^1.58.2",
+    "tailwindcss": "^4.3.0",
+    "@tailwindcss/vite": "^4.3.0",
+    "@sveltejs/adapter-node": "^5.5.4",
+    "@sveltejs/kit": "^2.63.0",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "svelte": "^5.56.1",
+    "svelte-check": "^4.6.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "@types/node": "^22"
+  },
+  "dependencies": {
+    "lucide-svelte": "^1.0.1",
+    "better-auth": "^1.6.23",
+    "@aws-sdk/client-s3": "^3.1145.0"
+  }
+}

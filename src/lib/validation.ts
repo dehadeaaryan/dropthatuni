@@ -1,0 +1,21 @@
+import { statuses, fieldTypes, safeLink, validTimezone, type WorkspaceData } from './model';
+const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const text = (v: unknown, max = 2000): v is string => typeof v === 'string' && v.length <= max;
+const id = (v: unknown) => text(v, 100) && !!v.trim() && !['__proto__', 'constructor', 'prototype'].includes(v);
+const array = (v: unknown, max: number): v is unknown[] => Array.isArray(v) && v.length <= max;
+const uniqueIds = (v: unknown[]) => new Set(v.map(x => object(x) && x.id)).size === v.length;
+const date = (v: unknown) => v === '' || typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z')) && new Date(v + 'T00:00:00Z').toISOString().slice(0, 10) === v;
+const optionalDate = (v: unknown) => v === undefined || date(v);
+const optionalUrl = (v: unknown) => v === undefined || v === '' || text(v, 2000) && !!safeLink(v);
+const money = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1e8;
+export function validWorkspace(v: unknown): v is WorkspaceData {
+  if (!object(v) || v.version !== 1 || !array(v.applications, 250) || !array(v.fields, 80) || !uniqueIds(v.applications) || !uniqueIds(v.fields)) return false;
+  if (!['clean', 'table'].includes(String(v.view)) || !['compact', 'comfortable', 'spacious'].includes(String(v.density)) || !['summary', 'inline'].includes(String(v.checklist)) || typeof v.collapsed !== 'boolean') return false;
+  if (!v.fields.every(f => object(f) && id(f.id) && text(f.label, 100) && fieldTypes.some(t => t.value === f.type) && typeof f.visible === 'boolean' && array(f.options, 100) && f.options.every(o => text(o, 200)))) return false;
+  if (!v.applications.every(a => object(a) && id(a.id) && ['id', 'university', 'program', 'intake', 'location', 'deadline', 'color', 'monogram'].every(k => text(a[k], k === 'color' ? 40 : 200)) && statuses.some(s => s.label === a.status) && typeof a.archived === 'boolean' && array(a.requirements, 100) && uniqueIds(a.requirements) && a.requirements.every(r => object(r) && id(r.id) && text(r.label, 200) && typeof r.done === 'boolean' && optionalDate(r.dueDate)) && object(a.fields) && Object.keys(a.fields).length <= 100 && Object.values(a.fields).every(x => text(x, 10000) || typeof x === 'boolean' || typeof x === 'number' && Number.isFinite(x)))) return false;
+  if (v.fees !== undefined && (!array(v.fees, 1000) || !uniqueIds(v.fees) || !v.fees.every(f => object(f) && id(f.id) && (f.applicationId === null || text(f.applicationId, 100)) && text(f.label, 200) && typeof f.amount === 'number' && Number.isFinite(f.amount) && f.amount >= 0 && f.amount <= 1e8 && ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'INR', 'AUD'].includes(String(f.currency)) && typeof f.paid === 'boolean' && text(f.dueDate, 20)))) return false;
+  if (!v.applications.every(a => object(a) && optionalUrl(a.applicationUrl) && optionalUrl(a.sourceUrl) && optionalDate(a.checkedDate) && date(a.deadline) && (a.offer === undefined || object(a.offer) && ['receivedDate', 'responseDeadline', 'depositDeadline', 'fundingDeadline'].every(k => date((a.offer as Record<string, unknown>)[k])) && ['tuition', 'scholarship', 'financialAid', 'deposit'].every(k => money((a.offer as Record<string, unknown>)[k])) && ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'INR', 'AUD'].includes(String(a.offer.currency)) && typeof a.offer.depositPaid === 'boolean' && ['Not applied', 'Applying', 'Applied', 'Awarded', 'Declined'].includes(String(a.offer.fundingStatus)) && text(a.offer.notes, 10000)))) return false;
+  if (v.reminders !== undefined && (!object(v.reminders) || typeof v.reminders.enabled !== 'boolean' || !text(v.reminders.timezone, 100) || !validTimezone(v.reminders.timezone) || typeof v.reminders.hour !== 'number' || !Number.isInteger(v.reminders.hour) || v.reminders.hour < 0 || v.reminders.hour > 23 || !array(v.reminders.days, 20) || !v.reminders.days.length || !v.reminders.days.every(d => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 365))) return false;
+  if (v.fees && !(v.fees as Record<string, unknown>[]).every(f => date(f.dueDate) && (f.applicationId === null || (v.applications as Record<string, unknown>[]).some(a => a.id === f.applicationId)))) return false;
+  return true;
+}

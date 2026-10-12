@@ -1,0 +1,103 @@
+import { createAccount } from './fixtures/account';
+import { testData } from './fixtures/workspace';
+import { test, expect } from '@playwright/test';
+import { defaultReminders, todayIn, type WorkspaceData } from '../src/lib/model';
+import { upcomingTasks, reminderTasks } from '../src/lib/tasks';
+import { mergeWorkspaces, parseWorkspaceFile } from '../src/lib/import-workspace';
+
+function fixture(): WorkspaceData {
+  const { applications, fields } = testData();
+  const today = todayIn('UTC');
+  const app = applications[0];
+  app.id = 'import-university'; app.university = 'Import University'; app.applicationUrl = 'https://example.edu/apply';
+  app.deadline = today; app.requirements = [{ id: 'cv', label: 'Prepare CV', done: false, dueDate: today }];
+  return { version: 1, applications: [app], fields, fees: [{ id: 'fee', applicationId: app.id, label: 'Application fee', amount: 50, currency: 'USD', paid: false, dueDate: today }], reminders: { ...defaultReminders(), timezone: 'UTC', hour: 0, days: [0], enabled: false }, view: 'clean', density: 'comfortable', checklist: 'summary', collapsed: false };
+}
+
+test('import preview, restore, application links, tasks, and funding', async ({ page }) => {
+  await createAccount(page);
+  await page.goto('/workspace');
+  await page.getByRole('link', { name: 'Import', exact: true }).click();
+  await expect(page.getByLabel('Workspace AI prompt')).toHaveValue(/Never invent deadlines/);
+  await page.getByLabel('Workspace JSON file').setInputFiles({ name: 'workspace.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture())) });
+  await page.getByRole('radio', { name: 'Replace / restore' }).check();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Restore workspace' }).click();
+  await download;
+  await expect(page.getByRole('status')).toHaveText('Workspace imported.');
+  await page.getByRole('link', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('button', { name: 'Table', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Application portal for Import University' })).toHaveAttribute('href', 'https://example.edu/apply');
+  await page.getByRole('button', { name: 'Upcoming tasks', exact: true }).click();
+  await expect(page.locator('.task-row')).toHaveCount(3);
+  await page.getByRole('button', { name: /Prepare CV/ }).click();
+  const detail = page.getByRole('dialog', { name: 'Application', exact: true });
+  await detail.getByRole('button', { name: 'Decision & funding' }).click();
+  await detail.getByLabel('Decision status').selectOption('Accepted');
+  await detail.getByLabel('Respond by').fill(todayIn('UTC'));
+  await detail.getByLabel('Tuition', { exact: true }).fill('30000');
+  await detail.getByLabel('Scholarship', { exact: true }).fill('10000');
+  await detail.getByLabel('Financial aid', { exact: true }).fill('5000');
+  await expect(detail.locator('.offer-total')).toContainText('$15,000.00');
+  await detail.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Respond to offer/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Submit application/ })).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/tasks-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.getByRole('link', { name: 'Import', exact: true }).click();
+  await expect(page.getByLabel('Workspace AI prompt')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: 'test-results/import-mobile.png', fullPage: true });
+  await page.getByLabel('Workspace JSON file').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"version":1}') });
+  await expect(page.getByRole('status')).toContainText('does not match');
+  await expect(page.getByRole('button', { name: 'Restore workspace' })).toHaveCount(0);
+});
+
+test('reminders authenticate, retry failures and deduplicate', async ({ request }) => {
+  const origin = 'http://127.0.0.1:5293', email = 'reminder-' + Date.now() + '@example.com';
+  expect((await request.post('/api/reminders/run')).status()).toBe(401);
+  const signup = await request.post('/api/auth/sign-up/email', { headers: { Origin: origin }, data: { name: 'Reminder User', email, password: 'a-safe-password-123' } });
+  expect(signup.ok()).toBeTruthy();
+  const data = fixture();
+  const put = (value: WorkspaceData) => request.put('/api/workspace', { headers: { Origin: origin }, data: value });
+  expect((await put(data)).ok()).toBeTruthy();
+  const run = () => request.post('/api/reminders/run', { headers: { Authorization: 'Bearer test-cron-secret' } });
+  expect((await (await run()).json()).sent).toBe(0);
+  data.reminders!.enabled = true;
+  expect((await put(data)).ok()).toBeTruthy();
+  await request.post('/__test-email/fail-next');
+  expect((await run()).status()).toBe(502);
+  expect((await (await run()).json()).sent).toBe(1);
+  expect((await (await run()).json()).sent).toBe(0);
+  const delivered = (await (await request.get('/__test-email')).json()).filter((e: { payload: { to: string[] } }) => e.payload.to.includes(email));
+  expect(delivered).toHaveLength(1);
+  expect(delivered[0].payload.text).toContain('Prepare CV');
+  expect(delivered[0].payload.text).toContain('Application fee');
+});
+
+test('import validation, merge identity, and date calculations', () => {
+  const data = fixture();
+  const incoming = structuredClone(data);
+  incoming.applications[0].id = 'ai-new-id';
+  incoming.fees![0].applicationId = 'ai-new-id';
+  const merged = mergeWorkspaces(data, incoming);
+  expect(merged.applications).toHaveLength(1);
+  expect(merged.applications[0].id).toBe(data.applications[0].id);
+  expect(merged.fees![0].applicationId).toBe(data.applications[0].id);
+  const unsafe = structuredClone(data);
+  unsafe.applications[0].applicationUrl = 'javascript:alert(1)';
+  expect(() => parseWorkspaceFile(JSON.stringify(unsafe))).toThrow();
+  unsafe.applications[0].applicationUrl = '';
+  unsafe.applications[0].deadline = '2026-02-30';
+  expect(() => parseWorkspaceFile(JSON.stringify(unsafe))).toThrow();
+  data.applications[0].archived = true;
+  expect(upcomingTasks(data)).toHaveLength(0);
+  data.applications[0].archived = false;
+  const date = new Date('2026-01-01T07:30:00Z');
+  data.applications[0].deadline = '2025-12-31';
+  data.applications[0].requirements = [];
+  data.fees = [];
+  expect(reminderTasks(data, 'America/Los_Angeles', [0], date)).toHaveLength(1);
+  expect(reminderTasks(data, 'UTC', [0], date)).toHaveLength(0);
+});

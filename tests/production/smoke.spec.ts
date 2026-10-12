@@ -35,3 +35,11 @@ test('readiness and proxy rate limits work without trusting spoofed IPs', async 
   const otherClient = await request.post('/api/auth/sign-in/email', { headers: { Origin: baseURL!, 'x-forwarded-for': '203.0.113.21' }, data: { email: 'missing@example.com', password: 'invalid-password' } });
   expect(otherClient.status()).toBe(401);
 });
+
+test('production does not serve credentials, database files, or server artifacts', async ({ request }) => {
+  for (const path of ['/.env', '/.env.local', '/.env.test', '/.git/config', '/data/auth-secret', '/data/dropthatuni.sqlite', '/build/server/index.js', '/src/lib/server/auth.ts']) {
+    const response = await request.get(path);
+    expect(response.status(), path).toBe(404);
+    expect(await response.text()).not.toContain('production-test-only-secret-with-more-than-32-characters');
+  }
+});

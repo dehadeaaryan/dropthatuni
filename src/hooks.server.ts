@@ -1,10 +1,17 @@
 import { redirect, type Handle } from '@sveltejs/kit';
 import { building, dev } from '$app/environment';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
-import { startReminderScheduler } from '$lib/server/reminder-scheduler';
+import { startReminderScheduler, stopReminderScheduler } from '$lib/server/reminder-scheduler';
+import { db } from '$lib/server/database';
 import { auth, authReady } from '$lib/server/auth';
 
-if (!building) void authReady.then(startReminderScheduler).catch(() => {});
+if (!building) {
+  void authReady.then(startReminderScheduler).catch(() => {});
+  if (!dev) process.once('sveltekit:shutdown', async () => {
+    await stopReminderScheduler();
+    await db.end();
+  });
+}
 
 export const handle: Handle = async ({ event, resolve }) => {
   if (event.url.pathname === '/demo' || event.url.pathname === '/demo/') {

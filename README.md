@@ -4,16 +4,16 @@ A master's application workspace built with SvelteKit, TypeScript, Tailwind CSS,
 
 ```sh
 bun install
-bun run dev
+bun run dev:local
 ```
 
-Open the URL printed by Vite. Use `bun run check`, `bun run build`, and `bun run test:ui` for validation. After building, `bun run test:ui --config playwright.production.config.ts` also verifies the production Bun server and larger imports. UI tests use an isolated SQLite database and a local S3 fixture; no real R2 files are touched. The test runner supplies explicit test-only storage credentials and starts its own server on port 5293.
+Open the URL printed by Vite. Use `bun run check`, `bun run build`, and `bun run test:ui` for validation. After building, `bun run test:ui --config playwright.production.config.ts` also verifies the production Bun server and larger imports. UI tests use an isolated real PostgreSQL database and a local S3 fixture; no real R2 files are touched. The test runner supplies explicit test-only storage credentials and starts its own server on port 5293.
 
 ## Workspace
 
 Clean timeline view is the default. Programs support drag and keyboard ranking, inline table editing, editable detail fields, customizable columns and checklists. New workspaces start empty. The landing page is at / and the tracker is at /workspace. Legacy seeded sample rows and their associated fees are removed; real user-created programs are retained.
 
-Profile supports email/password signup, login and logout. Passwords and sessions are managed by Better Auth. Workspace and Import require login, enforced in server hooks. Account workspaces and document metadata live in SQLite; new workspace changes are never written to localStorage. Older browser workspaces can be imported during signup. Theme preference remains device-local. Export produces a workspace JSON file, excluding documents and account credentials.
+Profile supports email/password signup, login and logout. Passwords and sessions are managed by Better Auth. Workspace and Import require login, enforced in server hooks. Accounts, workspaces and document metadata live in PostgreSQL; new workspace changes are never written to localStorage. Older browser workspaces can be imported during signup. Theme preference remains device-local. Export produces a workspace JSON file, excluding documents and account credentials.
 
 Fees support amounts, currencies, due dates, program association and paid/unpaid status. Totals are calculated per currency; currencies are never added together without conversion. Application details include their own fees and documents.
 
@@ -31,21 +31,19 @@ Deploy the included Dockerfile, target port 3000, and assign the HTTPS domain. S
 - `BETTER_AUTH_URL=https://your-domain`
 - `BETTER_AUTH_SECRET`: a persistent random secret (generate with `bun -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
 - R2 variables from `.env.example`
-- `DATABASE_PATH=/app/data/dropthatuni.sqlite`
+- `DATABASE_URL`: your PostgreSQL resource's Internal URL
 - `BODY_SIZE_LIMIT=12M` (already set in the Dockerfile; allows document uploads and larger workspace imports)
 - `ADDRESS_HEADER=x-forwarded-for` and `XFF_DEPTH=1` for one trusted Coolify proxy. Match the depth to your actual proxy chain if using a CDN or another reverse proxy. The app passes the adapter-resolved address to Better Auth, replacing any client-supplied internal IP header, so login rate limits are per client.
 
 Keep the container reachable through the Coolify proxy only; leave host Port Mappings empty. Use `/health` on internal port 3000 for readiness. The Dockerfile includes a Bun-based health check; it verifies startup migrations and database connectivity without authentication or external storage/email calls.
 
-Mount persistent storage at `/app/data`, writable by the container's `bun` user. Keep one application replica while using SQLite. Back up this volume, including authentication tables, with a consistent SQLite backup. R2 objects need their own backup policy. Local development generates and persists a secret automatically; production requires an explicit secret. The production runtime is Bun because the temporary database uses `bun:sqlite`.
+PostgreSQL is required. Create a standalone PostgreSQL resource on the same Coolify destination, start it, and copy its **Internal URL** to the app's private runtime `DATABASE_URL`. Keep database networking private. The app requires no `/app/data` mount. PostgreSQL data persists in the database resource's volume; configure scheduled database backups separately. R2 objects need their own backup policy.
 
-## Moving to PostgreSQL
+At startup, Better Auth creates/updates its PostgreSQL tables, followed by application tables (workspace JSONB, document metadata and links, reminder delivery history). Startup migrations are serialized with a PostgreSQL advisory lock. `/health` becomes ready after migrations finish. Builds do not connect to PostgreSQL or need credentials. Keep `BETTER_AUTH_SECRET` persistent across deployments and set credentials as runtime-only variables.
 
-Database operations are centralized behind asynchronous methods in `src/lib/server/repository.ts`; API routes and the frontend contain no SQLite queries. Replace that implementation and `database.ts` with PostgreSQL using Coolify's internal `DATABASE_URL`. Configure Better Auth's PostgreSQL database adapter in `auth.ts` and generate its PostgreSQL schema with the installed Better Auth version.
+Use one app replica when the built-in reminder scheduler is enabled. Reminder claims are atomic across connections. Local development uses `bun run dev:local` to start a private persistent PostgreSQL server on port 55435, or set `DATABASE_URL` to your own local database and run `bun run dev`. The embedded PostgreSQL package is a development dependency and is not installed in the production image. Local credentials and database files stay in ignored `data/`.
 
-For application tables, map workspace `data` to JSONB and epoch timestamps, sizes to BIGINT; retain text IDs, foreign keys, unique object keys and the document/application composite primary key. Recreate the owner index. Use PostgreSQL transactions for document insertion and parameterized queries in the repository. The workspace JSON shape, API routes, R2 object keys and UI stay unchanged.
-
-Before switching, stop writes, migrate **all Better Auth tables** (users, accounts/password hashes, sessions, verification/rate-limit records as appropriate), workspaces, document metadata and links preserving IDs. Verify counts, login, account isolation, document downloads, and fees against PostgreSQL before cutting over. Keep `BETTER_AUTH_SECRET` and R2 configuration unchanged. SQLite exports are not a substitute for migrating authentication or document records. PostgreSQL support is prepared structurally but is not implemented yet.
+Existing SQLite files are left untouched; they are not automatically migrated. A new PostgreSQL database starts empty. Workspace JSON export/import transfers application data, not accounts, document records or reminder history. Do not remove the old database until any required data has been transferred.
 
 Light/dark themes share the app family styling. Figtree is self-hosted; its license is in `static/fonts/OFL.txt`.
 
@@ -69,7 +67,7 @@ Set these private server environment variables in Coolify:
 - `RESEND_API_KEY`: a Resend API key with sending permission.
 - `REMINDER_FROM_EMAIL`: e.g. `DropThatUni <reminders@aaryandehade.com>`, on a domain verified in Resend.
 - `REMINDER_CRON_SECRET`: a separate persistent random secret of at least 32 characters.
-- `REMINDER_AUTO_RUN=true`: enables the built-in scheduler in this persistent Coolify app process. It starts when SvelteKit loads its server hooks, checks every 5 minutes, and requires the application to remain running. Use one replica while on SQLite.
+- `REMINDER_AUTO_RUN=true`: enables the built-in scheduler in this persistent Coolify app process. It starts when SvelteKit loads its server hooks, checks every 5 minutes, and requires the application to remain running. Use one app replica with the built-in scheduler.
 - Keep `BETTER_AUTH_URL` and `ORIGIN` set to the public HTTPS application URL.
 
 Users opt in under Profile → Deadline reminders and choose their time zone, hour, and notice days. Default notices are 7, 3, 1 and 0 days before a dated task. At most one digest is delivered per account/local calendar day after the chosen hour. No reminders are generated for undated or already overdue tasks. Delivery history is persisted in the database and Resend idempotency keys protect retries.
@@ -84,8 +82,6 @@ Alternatively leave `REMINDER_AUTO_RUN=false` and use an hourly n8n Schedule Tri
 Use an n8n Header Auth credential to keep the secret out of workflow JSON. The endpoint processes up to 50 due accounts per invocation and returns sent/failed/skipped counts. Call it again to process further accounts; successful deliveries will be skipped. Failed deliveries may retry that same day using the persisted payload and idempotency key. It sends email to each account's own email address. Time zone scheduling does not determine the university's precise cutoff time; deadline fields are calendar dates.
 
 The test suite overrides `RESEND_API_URL` to a local fake email provider. Leave that variable unset in production, where delivery uses `https://api.resend.com/emails`. No live Resend sending has been performed during development.
-
-For PostgreSQL migration, include `reminder_deliveries` (composite user/day primary key, status, BIGINT attempted_at, payload text) along with the other tables so sent history and retries survive the move.
 
 Authentication tests disable rate limiting only in development with DROPTHATUNI_TEST_MODE=true; production retains authentication rate limits.
 

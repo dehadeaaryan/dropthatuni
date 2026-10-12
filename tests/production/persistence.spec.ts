@@ -1,16 +1,14 @@
 import { test, expect } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isolatedDatabase } from '../fixtures/database';
 
-test('accounts and workspace survive a production process restart', async ({ playwright }) => {
-  const directory = await mkdtemp(join(tmpdir(), 'dropthatuni-persistence-'));
+test('accounts and workspace survive a production process restart', async ({ playwright }, testInfo) => {
+  const database = await isolatedDatabase(testInfo.config.webServer!.env!.DATABASE_URL!);
   const origin = 'http://127.0.0.1:5296';
-  const client = await playwright.request.newContext({ baseURL: origin, extraHTTPHeaders: { Origin: origin } });
+  const client = await playwright.request.newContext({ baseURL: origin, extraHTTPHeaders: { Origin: origin, 'x-forwarded-for': '203.0.113.30' } });
   let server: ChildProcess | undefined;
   async function start() {
-    server = spawn('bun', ['build/index.js'], { env: { ...process.env, NODE_ENV: 'production', PORT: '5296', HOST: '127.0.0.1', ORIGIN: origin, BETTER_AUTH_URL: origin, BETTER_AUTH_SECRET: 'restart-test-only-secret-with-more-than-32-characters', DATABASE_PATH: join(directory, 'workspace.sqlite'), ADDRESS_HEADER: '', XFF_DEPTH: '1', REMINDER_AUTO_RUN: 'false', RESEND_API_KEY: '', R2_BUCKET_NAME_DOCUMENTS: '' }, stdio: 'ignore' });
+    server = spawn('bun', ['build/index.js'], { env: { ...process.env, NODE_ENV: 'production', PORT: '5296', HOST: '127.0.0.1', ORIGIN: origin, BETTER_AUTH_URL: origin, BETTER_AUTH_SECRET: 'restart-test-only-secret-with-more-than-32-characters', DATABASE_URL: database.url, ADDRESS_HEADER: 'x-forwarded-for', XFF_DEPTH: '1', REMINDER_AUTO_RUN: 'false', RESEND_API_KEY: '', R2_BUCKET_NAME_DOCUMENTS: '' }, stdio: 'ignore' });
     await expect.poll(async () => { try { return (await client.get('/health')).status(); } catch { return 0; } }, { timeout: 10000 }).toBe(200);
   }
   async function stop() {
@@ -30,5 +28,5 @@ test('accounts and workspace survive a production process restart', async ({ pla
     expect((await client.post('/api/auth/sign-out', { data: {} })).ok()).toBeTruthy();
     expect((await client.post('/api/auth/sign-in/email', { data: { email: 'restart@example.com', password: 'a-secure-restart-password' } })).ok()).toBeTruthy();
     expect((await (await client.get('/api/workspace')).json()).workspace).toEqual(workspace);
-  } finally { await stop(); await client.dispose(); await rm(directory, { recursive: true, force: true }); }
+  } finally { await stop(); await client.dispose(); await database.cleanup(); }
 });

@@ -1,4 +1,4 @@
-import { emptyData, removeSampleData, defaultReminders, initials, newRequirements, type Application, type Field, type Fee, type WorkspaceData } from './model';
+import { emptyData, removeSampleData, defaultReminders, initials, newRequirements, type Application, type ApplicationDraft, type Field, type Fee, type WorkspaceData } from './model';
 import { demoData } from './demo';
 import { validWorkspace } from './validation';
 const initial = emptyData();
@@ -103,10 +103,10 @@ export function toggleTheme() {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', workspace.dark ? '#000000' : '#cfd5c5');
   try { localStorage.setItem('dropthatuni-theme', workspace.dark ? 'dark' : 'light'); } catch { /* Theme still works without storage. */ }
 }
-export function addApplication(university: string, program: string, intake: string) {
-  const app: Application = { id: crypto.randomUUID(), university, program, intake, location: '', deadline: '',
-    status: 'Considering', color: '#586c66', monogram: initials(university), archived: false,
-    requirements: newRequirements(), fields: {} };
+export function addApplication(draft: ApplicationDraft, standardChecklist = true, fields: Application['fields'] = {}) {
+  const app: Application = { ...draft, university: draft.university.trim(), program: draft.program.trim(), intake: draft.intake.trim(), location: draft.location.trim(), id: crypto.randomUUID(),
+    color: '#586c66', monogram: initials(draft.university), archived: false,
+    requirements: standardChecklist ? newRequirements() : [], fields };
   workspace.applications.push(app); workspace.selectedId = app.id; workspace.modal = null;
   workspace.section = 'applications'; workspace.query = ''; workspace.filter = 'All';
 }
@@ -121,6 +121,12 @@ export function moveRank(id: string, direction: number) {
   const visible = workspace.applications.filter(a => !a.archived);
   const index = visible.findIndex(a => a.id === id);
   const target = visible[index + direction]; if (target) reorder(id, target.id);
+}
+export function deleteArchivedApplication(id: string) {
+  if (!workspace.applications.some(app => app.id === id && app.archived)) return;
+  workspace.selectedId = null;
+  workspace.fees = workspace.fees.filter(fee => fee.applicationId !== id);
+  workspace.applications = workspace.applications.filter(app => app.id !== id);
 }
 export function addField(field: Omit<Field, 'id' | 'visible'>) {
   workspace.fields.push({ ...field, id: crypto.randomUUID(), visible: true });

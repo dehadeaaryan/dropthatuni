@@ -42,6 +42,7 @@ export interface Application {
   applicationUrl?: string; sourceUrl?: string; checkedDate?: string; offer?: Offer;
   requirements: Requirement[]; fields: Record<string, FieldValue>;
 }
+export type ApplicationDraft = Pick<Application, 'university' | 'program' | 'intake' | 'location' | 'deadline' | 'status' | 'applicationUrl' | 'sourceUrl'>;
 export const fieldTypes: { value: FieldType; label: string }[] = [
   { value: 'text', label: 'Text' }, { value: 'textarea', label: 'Long text' },
   { value: 'number', label: 'Number' }, { value: 'date', label: 'Date' },

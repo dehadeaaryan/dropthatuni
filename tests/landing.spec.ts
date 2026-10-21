@@ -6,6 +6,11 @@ import { testData } from './fixtures/workspace';
 test('landing leads to an empty workspace and supports light/dark mobile layouts', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /One place to manage all your applications/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'DropThatUni home' }).locator('img')).toHaveAttribute('src', '/logo.png?v=orange-glass-v1');
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', /\/og-preview\.png\?v=orange-glass-v1$/);
+  const preview = await page.request.get('/og-preview.png');
+  expect(preview.ok()).toBeTruthy();
+  expect(preview.headers()['content-type']).toContain('image/png');
   await expect(page.getByRole('contentinfo')).toContainText('DropThatUni');
   await expect(page.getByText('Start locally. Log in to save across devices.')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/landing-light.png', fullPage: true });

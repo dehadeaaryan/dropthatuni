@@ -1,9 +1,9 @@
 <script lang="ts">
   import { Plus, ChevronUp, ChevronDown } from 'lucide-svelte';
-  import { workspace, addApplication, addField } from '$lib/workspace.svelte';
+  import { workspace, addField } from '$lib/workspace.svelte';
   import { presets, fieldTypes, type FieldType } from '$lib/model';
   import Dialog from './Dialog.svelte';
-  let university = $state(''), program = $state(''), intake = $state('Fall 2028');
+  import AddProgram from './AddProgram.svelte';
   let label = $state(''), type = $state<FieldType>('text'), options = $state('');
   function createField() {
     if (!label.trim()) return;
@@ -17,14 +17,7 @@
   }
 </script>
 {#if workspace.modal === 'add'}
-  <Dialog title="Add program" close={() => workspace.modal = null}>
-    <form class="dialog-content grid gap-5" onsubmit={(e) => { e.preventDefault(); if (university.trim() && program.trim()) { addApplication(university.trim(), program.trim(), intake.trim()); university = ''; program = ''; } }}>
-      <label class="field-label">University<input class="field-input" required maxlength="150" placeholder="University name" bind:value={university} /></label>
-      <label class="field-label">Program<input class="field-input" required maxlength="150" placeholder="MS · Computer Science" bind:value={program} /></label>
-      <label class="field-label">Intake<input class="field-input" required maxlength="80" bind:value={intake} /></label>
-      <button class="primary-btn justify-center mt-2"><Plus size={17} />Add program</button>
-    </form>
-  </Dialog>
+  <AddProgram />
 {:else if workspace.modal === 'fields'}
   <Dialog title="Fields & columns" close={() => workspace.modal = null}>
     <div class="dialog-content">

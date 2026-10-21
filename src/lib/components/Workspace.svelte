@@ -123,7 +123,7 @@
               </div>
               {#if workspace.checklist === 'inline'}<div class="inline-requirements"><Checklist applicationId={app.id} compact /></div>{/if}
             </li>
-          {:else}<div class="empty-state"><Layers size={28} /><h3>{workspace.query || workspace.filter !== 'All' ? 'No matching programs' : workspace.section === 'archive' ? 'Nothing archived' : 'Your shortlist starts here'}</h3>{#if workspace.section !== 'archive'}<button class="secondary-btn mt-4" onclick={() => workspace.modal = 'add'}><Plus size={15} />Add program</button>{/if}</div>{/each}
+          {:else}<div class="empty-state">{#if workspace.section === 'archive'}<Archive size={28} />{:else}<Layers size={28} />{/if}<h3>{workspace.query || workspace.filter !== 'All' ? 'No matching programs' : workspace.section === 'archive' ? 'Nothing archived' : 'Your shortlist starts here'}</h3>{#if workspace.section !== 'archive'}<button class="secondary-btn mt-4" onclick={() => workspace.modal = 'add'}><Plus size={15} />Add program</button>{/if}</div>{/each}
         </ol>
       {:else}
         <div class="table-scroll" data-density={workspace.density}>

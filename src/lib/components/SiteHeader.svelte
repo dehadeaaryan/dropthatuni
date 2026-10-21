@@ -10,7 +10,7 @@
 </script>
 <header class="site-header" inert={!workspace.loaded}>
   <div class="header-pill glass">
-    <a class="brand" href="/" onclick={(e) => void visit(e, '/')} aria-label="DropThatUni home"><img class="brand-logo" src="/logo.png" alt="" width="42" height="42" /><span>DropThatUni<span class="text-accent">.</span></span></a>
+    <a class="brand" href="/" onclick={(e) => void visit(e, '/')} aria-label="DropThatUni home"><img class="brand-logo" src="/logo.png?v=orange-glass-v1" alt="" width="46" height="32" /><span>DropThatUni<span class="text-accent">.</span></span></a>
     <nav class="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
       <a class="header-link" href="/import" onclick={(e) => void visit(e, '/import')}>Import</a>
       <a class="header-link" href="/about" onclick={(e) => void visit(e, '/about')}>About</a>

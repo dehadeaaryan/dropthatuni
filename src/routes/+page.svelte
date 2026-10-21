@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
   import { ArrowUpRight, Layers, ClipboardCheck, CalendarDays, CircleCheck, ArrowRight } from 'lucide-svelte';
   import SiteHeader from '$lib/components/SiteHeader.svelte';
   import { workspace, loadWorkspace, saveWorkspace, snapshot } from '$lib/workspace.svelte';
@@ -15,7 +16,24 @@
   }
   const steps = [{ label: 'Shortlist', icon: Layers }, { label: 'Prepare', icon: ClipboardCheck }, { label: 'Apply', icon: CalendarDays }, { label: 'Decide', icon: CircleCheck }];
 </script>
-<svelte:head><title>DropThatUni · Master’s applications</title><meta name="description" content="Track your master's applications, deadlines, documents, fees and decisions in one personal workspace." /></svelte:head>
+<svelte:head>
+  <title>DropThatUni · Master’s applications</title>
+  <meta name="description" content="Track your master's applications, deadlines, documents, fees and decisions in one personal workspace." />
+  <link rel="canonical" href={page.url.origin + page.url.pathname} />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content={page.url.origin + page.url.pathname} />
+  <meta property="og:title" content="DropThatUni · Master’s applications" />
+  <meta property="og:description" content="Track your master's applications, deadlines, documents, fees and decisions in one personal workspace." />
+  <meta property="og:image" content={page.url.origin + '/og-preview.png?v=orange-glass-v1'} />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="DropThatUni master’s application tracker preview" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="DropThatUni · Master’s applications" />
+  <meta name="twitter:description" content="Track your master's applications, deadlines, documents, fees and decisions in one personal workspace." />
+  <meta name="twitter:image" content={page.url.origin + '/og-preview.png?v=orange-glass-v1'} />
+</svelte:head>
 <div class="ambient" aria-hidden="true"></div>
 <SiteHeader />
 <main class="landing-page" inert={!workspace.loaded}>
